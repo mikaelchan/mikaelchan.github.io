@@ -14,7 +14,7 @@ rss = true            # show rss icon
 # home page profile
 avatar = 'hi@michaelchan.space' # gravatar email or image url
 name = 'Michael Chan'
-bio = 'less is more'
+bio = '长期主义者'
 
 
 # misc
