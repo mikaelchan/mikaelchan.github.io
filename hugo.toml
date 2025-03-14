@@ -1,4 +1,4 @@
-baseURL = 'https://blog.michaelchan.space/'
+baseURL = 'http://blog.michaelchan.space/'
 languageCode = 'zh-cn'
 title = 'Zen & Programming'
 theme = 'paper'
