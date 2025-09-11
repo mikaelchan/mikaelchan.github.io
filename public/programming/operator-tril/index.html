@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-cn"><head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+<title>那些年我写过的算子-Tril - Zen&amp;Programming</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description"
+    content="本系列文章记录了我从工作到现在经手的算子实现，分享一些经验和思考。Tril算子(1)
+
+
+(1)下三角矩阵，参见torch.tril官方文档
+
+是我在工作中实现的第一个算子，也比较简单，适合入门。 ">
+<link rel="canonical" href="http://localhost:1313/programming/operator-tril/" />
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/1.1.0/modern-normalize.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+
+
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preload" as="style"
+      href="https://fonts.googleapis.com/css?family=Noto+Serif+SC|Noto+Emoji&display=swap" />
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Noto+Serif+SC|Noto+Emoji&display=swap"
+      media="print" onload="this.media='all'" />
+<noscript>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Noto+Serif+SC&display=swap" />
+</noscript>
+
+
+
+<link rel="stylesheet" href="/css/hugo-tufte.min.css">
+
+
+
+<link rel="stylesheet" href="/css/hugo-tufte-options.min.css">
+
+<link rel="stylesheet" href="/css/hugo-tufte-override.css">
+
+</head>
+<body>
+
+
+<article id="main">
+  <section>
+<h1 class="content-title">那些年我写过的算子-Tril</h1></section>
+
+  
+<section>
+  <details closed class="toc">
+    <summary>Table of Contents</summary>
+    <nav id="TableOfContents">
+  <ul>
+    <li><a href="#算子定义">算子定义</a></li>
+    <li><a href="#算子gpu实现">算子GPU实现</a></li>
+    <li><a href="#算子npu实现">算子NPU实现</a>
+      <ul>
+        <li><a href="#退化场景">退化场景</a></li>
+        <li><a href="#小矩阵场景">小矩阵场景</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+  </details>
+</section>
+
+
+  <section><p>本系列文章记录了我从工作到现在经手的算子实现，分享一些经验和思考。<code>Tril</code>算子<label for="sidenote-1" class="margin-toggle sidenote-number">(1)</label>
+<input type="checkbox" id="sidenote-1" class="margin-toggle"/>
+<span class="sidenote">
+<span class="sidenote-number">(1)</span>下三角矩阵，参见<a href="https://docs.pytorch.org/docs/stable/generated/torch.tril.html">torch.tril官方文档</a>
+</span>
+是我在工作中实现的第一个算子，也比较简单，适合入门。</p>
+<h2 id="算子定义">
+算子定义
+<a href="#%e7%ae%97%e5%ad%90%e5%ae%9a%e4%b9%89" class="heading-anchor">#</a>
+</h2>
+<p><code>Tril</code>算子是一个矩阵操作算子，输入一个二维矩阵(或者更高维的张量)和一个可选的对角线偏移量（<code>diagonal</code>），输出一个下三角矩阵(或者更高维张量的每个二维切片的下三角矩阵)。所谓下三角矩阵是指矩阵中位于对角线及其下方的元素保留，主对角线以上的元素置零。
+<img src="/images/tril.svg" alt="Tril算子实例"> <label for="sidenote-2" class="margin-toggle sidenote-number">(2)</label>
+<input type="checkbox" id="sidenote-2" class="margin-toggle"/>
+<span class="sidenote">
+<span class="sidenote-number">(2)</span>图中m=8，n=10，空白处为0
+</span>
+
+接到这个算子时，正值公司在Ascend910B上部署<code>LLama</code>模型，<code>Tril</code>算子是其中的一个基础算子。这个算子在<code>LLama</code>模型中用于生成注意力掩码矩阵，确保每个位置只能关注其前面的位置信息。</p>
+<h2 id="算子gpu实现">
+算子GPU实现
+<a href="#%e7%ae%97%e5%ad%90gpu%e5%ae%9e%e7%8e%b0" class="heading-anchor">#</a>
+</h2>
+<p>拿到算子需求后，我们往往会参考已有的CUDA实现，这个算子在pytorch的<code>aten/src/ATen/native/cuda/TriangularOps.cu</code>中。<label for="sidenote-3" class="margin-toggle sidenote-number">(3)</label>
+<input type="checkbox" id="sidenote-3" class="margin-toggle"/>
+<span class="sidenote">
+<span class="sidenote-number">(3)</span>该实现在2024年有过一次优化，曾有一度，我实现的性能比pytorch的还好
+</span>
+</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-cpp" data-lang="cpp"><span class="line"><span class="cl"><span class="n">IndexType</span> <span class="n">running_index</span><span class="p">;</span>
+</span></span><span class="line"><span class="cl"><span class="cp">#pragma unroll
+</span></span></span><span class="line"><span class="cl"><span class="cp"></span><span class="k">for</span> <span class="p">(</span><span class="n">IndexType</span> <span class="n">i</span> <span class="o">=</span> <span class="n">dims</span> <span class="o">-</span> <span class="mi">3</span><span class="p">;</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">;</span> <span class="o">--</span><span class="n">i</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="n">running_index</span> <span class="o">=</span> <span class="n">linear_idx</span> <span class="o">%</span> <span class="n">self_info</span><span class="p">.</span><span class="n">sizes</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+</span></span><span class="line"><span class="cl">    <span class="n">linear_idx</span> <span class="o">/=</span> <span class="n">self_info</span><span class="p">.</span><span class="n">sizes</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+</span></span><span class="line"><span class="cl">    <span class="n">self_offset</span> <span class="o">+=</span> <span class="n">running_index</span> <span class="o">*</span> <span class="n">self_info</span><span class="p">.</span><span class="n">strides</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+</span></span><span class="line"><span class="cl">    <span class="n">result_offset</span> <span class="o">+=</span> <span class="n">running_index</span> <span class="o">*</span> <span class="n">result_info</span><span class="p">.</span><span class="n">strides</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="kt">bool</span> <span class="n">mask</span> <span class="o">=</span> <span class="n">upper</span> <span class="o">?</span> <span class="p">(</span><span class="n">col</span> <span class="o">-</span> <span class="n">row</span> <span class="o">&gt;=</span> <span class="n">k</span><span class="p">)</span> <span class="o">:</span> <span class="p">(</span><span class="n">col</span> <span class="o">-</span> <span class="n">row</span> <span class="o">&lt;=</span> <span class="n">k</span><span class="p">);</span>
+</span></span><span class="line"><span class="cl"><span class="n">result_info</span><span class="p">.</span><span class="n">data</span><span class="p">[</span><span class="n">result_offset</span><span class="p">]</span> <span class="o">=</span> <span class="n">mask</span> <span class="o">?</span> <span class="n">self_info</span><span class="p">.</span><span class="n">data</span><span class="p">[</span><span class="n">self_offset</span><span class="p">]</span> <span class="o">:</span> <span class="n">scalar_t</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+</span></span></code></pre></div><p>上面这段代码是<code>Tril</code>算子的核心逻辑，主要思路是通过计算每个线程处理的元素在输入张量中的位置，然后根据行列索引和对角线偏移量来决定是否保留该元素。对于<code>SIMT</code>架构点GPU来说，这种逐元素处理的方式非常适合并行计算，但是到了<code>SIMD</code>点NPU上，这种方式会带来严重的<code>scalar</code>计算，导致性能大幅下降。</p>
+<h2 id="算子npu实现">
+算子NPU实现
+<a href="#%e7%ae%97%e5%ad%90npu%e5%ae%9e%e7%8e%b0" class="heading-anchor">#</a>
+</h2>
+<p>NPU的<code>SIMD</code>架构要求我们尽量使用向量化操作，减少分支和标量计算。针对<code>Tril</code>算子，我们首先会想到退化的场景。</p>
+<h3 id="退化场景">
+退化场景
+<a href="#%e9%80%80%e5%8c%96%e5%9c%ba%e6%99%af" class="heading-anchor">#</a>
+</h3>
+<p>当对角线在矩阵上方时，整个矩阵都在下三角区域内，输出矩阵等于输入矩阵，无需任何计算；当对角线在矩阵下方时，整个矩阵都在上三角区域内，输出矩阵全为零，也无需任何计算。
+<img src="/images/tril-degenerate.svg" alt="Tril算子退化场景">
+也就是$$y_{ij}=\begin{cases}0 &amp;\text{if } k \le -m \\ x_{ij} &amp;\text{if } k \ge n-1 \end{cases}$$</p>
+<h3 id="小矩阵场景">
+小矩阵场景
+<a href="#%e5%b0%8f%e7%9f%a9%e9%98%b5%e5%9c%ba%e6%99%af" class="heading-anchor">#</a>
+</h3>
+<p>当矩阵元素个数比较小时<label for="sidenote-4" class="margin-toggle sidenote-number">(4)</label>
+<input type="checkbox" id="sidenote-4" class="margin-toggle"/>
+<span class="sidenote">
+<span class="sidenote-number">(4)</span>这种场景很少见，优化优先级不高
+</span>
+，</p></section>
+  <section><footer class="page-footer">
+<hr />
+
+<div class="previous-post" style="display:inline-block;">
+  
+</div>
+
+<div class="next-post", style="display:inline-block;float:right;">
+  
+</div>
+
+<ul class="page-footer-menu">
+  
+  
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+  
+  
+</ul>
+
+
+
+
+
+</footer>
+</section>
+  <section><nav class="menu">
+    <ul>
+    
+        <li><a href="/">Home</a></li>
+    
+        <li><a href="/programming/">编程</a></li>
+    
+        <li><a href="">杂谈</a></li>
+    
+        <li><a href="/tags/">标签</a></li>
+    
+    </ul>
+</nav>
+</section>
+</article>
+
+
+
+
+
+
+
+  <script>(function(){var e,t,n,s=document.getElementsByTagName("code");for(n=0;n<s.length;){if(t=s[n],t.parentNode.tagName!=="PRE"&&t.childElementCount===0&&!t.classList.contains("nolatex")&&(e=t.textContent,/^\$[^$]/.test(e)&&/[^$]\$$/.test(e)&&(e=e.replace(/^\$/,"\\(").replace(/\$$/,"\\)"),t.textContent=e),/^\\\((.|\s)+\\\)$/.test(e)||/^\\\[(.|\s)+\\\]$/.test(e)||/^\$(.|\s)+\$$/.test(e)||/^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(e))){t.outerHTML=t.innerHTML;continue}n++}})()</script>
+
+
+<link rel="stylesheet" href="//cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css" crossorigin="anonymous">
+<script defer src="//cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.js" crossorigin="anonymous"></script>
+<script defer src="//cdn.jsdelivr.net/npm/katex@0.16.4/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        renderMathInElement(document.body, {
+            
+            
+            
+            
+            
+            
+            trust: (context) => ['\\htmlId', '\\href'].includes(context.command),
+            macros: {
+              "\\eqref": "\\href{###1}{(\\text{#1})}",
+              "\\ref": "\\href{###1}{\\text{#1}}",
+              "\\label": "\\htmlId{#1}{}"
+            }
+        });
+    });
+</script>
+
+
+
+</body>
+
+</html>
