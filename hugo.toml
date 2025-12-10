@@ -1,4 +1,4 @@
-baseURL = 'https://mike.yandk.space/'
+baseURL = 'https://michaelchan.space/'
 languageCode = 'zh-cn'
 title = 'Zen&Programming'
 theme = 'hugo-tufte'

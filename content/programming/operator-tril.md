@@ -35,4 +35,4 @@ NPU的`SIMD`架构要求我们尽量使用向量化操作，减少分支和标�
 ![Tril算子退化场景](/images/tril-degenerate.svg)
 也就是$$y_{ij}=\begin{cases}0 &\text{if } k \le -m \\\\ x_{ij} &\text{if } k \ge n-1 \end{cases}$$
 ### 小矩阵场景
-当矩阵元素个数比较小时{{<sidenote>}}这种场景很少见，优化优先级不高{{</sidenote>}}，
+当矩阵元素个数比较小时{{<sidenote>}}这种场景很少见，优化优先级不高{{</sidenote>}}，q
