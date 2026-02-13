@@ -218,7 +218,7 @@ $$
 $$
 s2\\_idx = \\frac{(2 * num\\_blocks\\_S1 -1) - \\sqrt{(2 * num\\_blocks\\_S1 -1)^2 + 8(num\\_blocks\\_S1 - 1 - block\\_idx)}}{2}
 $$
-在这里，sqrt导致编译保存，最终我们通过牛顿迭代法求解这个方程：
+在这里，sqrt导致编译保存，最终我们通过牛顿迭代法求解这个方程{{<sidenote>}}为什么10 次迭代，值得讨论{{</sidenote>}}：
 ```python
 term1 = (NUM_BLOCKS_M * 2 - 1) * (NUM_BLOCKS_M * 2 - 1)
 term2 = 8 * (NUM_BLOCKS_M - 1 - flat_idx_in_batch)
