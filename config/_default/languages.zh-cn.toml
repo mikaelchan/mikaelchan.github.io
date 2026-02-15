@@ -1,0 +1,16 @@
+disabled = false
+languageCode = "zh-CN"
+languageName = "Chinese"
+weight = 1
+title = "Roofline"
+
+[params]
+displayName = "CH"
+isoCode = "zh-CN"
+rtl = false
+dateFormat = "2 January 2006"
+logo = "roofline.png"
+
+["params.author"]
+name = "Michael Chan"
+email = "hi@michaelchan.space"

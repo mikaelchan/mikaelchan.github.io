@@ -1,0 +1,23 @@
+[[main]]
+none = "none"
+
+[[main]]
+name = "编程"
+pageRef = "programming"
+identifier = "wfaakRqRpH"
+weight = 9_999
+
+[[main]]
+name = "笔记"
+pageRef = "note"
+identifier = "9AGcWzAvqW"
+weight = 9_999
+
+[[footer]]
+none = "none"
+
+[[footer]]
+name = "标签"
+pageRef = "tags"
+identifier = "6cTQdv9QCN"
+weight = 9_999
