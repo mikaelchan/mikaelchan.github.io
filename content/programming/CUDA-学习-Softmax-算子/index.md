@@ -265,6 +265,7 @@ d_{AB} &= d_A \cdot e^{m_A - m_{AB}} + d_B \cdot e^{m_B - m_{AB}}
 \end{aligned}
 $$
 这个逻辑与串行递推是同构的。
+
 ### 7.2 CUDA 代码实现
 ```c++
 struct OnlineStats {
